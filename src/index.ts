@@ -16,6 +16,7 @@ class SSEClient {
 
   public onopen?: (event: Event) => any;
   public onclose?: () => any;
+  public onerror?: (response: Response) => any;
   public onmessage?: (message: MessageEvent) => any;
   public readState: number = SSEClient.CONNECTING;
   private reader?: ReadableStreamReader;
@@ -31,10 +32,14 @@ class SSEClient {
       .then((response: Response) => {
         // There is no body 🤷
         if (!response.body) throw new Error('No body');
-
-        // get that reader
-        this.reader = response.body.getReader();
-        this.start(this.reader);
+        if (response.status !== 200) {
+          // Turn the streaming SEE response into a normal response that we can call .json() or .text() on to get the error message
+          const errorResponse = new Response(response.body, { status: response.status });
+          this._onError(errorResponse);
+        } else {
+          this.reader = response.body.getReader();
+          this.start(this.reader);
+        }
       })
       .catch(error => {
         console.error(error);
@@ -50,6 +55,10 @@ class SSEClient {
   private _onClosed(): void {
     this.readState = SSEClient.CLOSED;
     this.onclose && this.onclose();
+  }
+
+  private _onError(response: Response): void {
+    this.onerror && this.onerror(response);
   }
 
   private _onMessage(objectEvent: ObjectEvent): void {
